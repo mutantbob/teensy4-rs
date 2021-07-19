@@ -1,6 +1,6 @@
 //! An adaptation of the `rtic_led.rs` example that demonstrates:
 //!
-//! 1. how to share late resources and
+//! 1. how to define resources and
 //! 2. how to use the systick interrupt to cause the LED to blink.
 //!
 //! Please refer to the [RTIC book](https://rtic.rs) for more information on RTIC.
@@ -22,13 +22,16 @@ mod app {
     #[monotonic(binds = SysTick, default = true)]
     type MyMono = DwtSystick<MONO_HZ>;
 
-    #[resources]
-    struct Resources {
+    #[local]
+    struct Local {
         led: bsp::Led,
     }
 
-    #[init()]
-    fn init(mut cx: init::Context) -> (init::LateResources, init::Monotonics) {
+    #[shared]
+    struct Shared {}
+
+    #[init]
+    fn init(mut cx: init::Context) -> (Shared, Local, init::Monotonics) {
         let mut dcb = cx.core.DCB;
         let dwt = cx.core.DWT;
         let systick = cx.core.SYST;
@@ -48,12 +51,12 @@ mod app {
         let mut led = bsp::configure_led(pins.p13);
         led.set();
 
-        (init::LateResources { led }, init::Monotonics(mono))
+        (Shared {}, Local { led }, init::Monotonics(mono))
     }
 
-    #[task(resources = [led])]
-    fn blink(mut cx: blink::Context) {
-        cx.resources.led.lock(|led| led.toggle());
+    #[task(local = [led])]
+    fn blink(cx: blink::Context) {
+        cx.local.led.toggle();
         // Schedule the following blink.
         blink::spawn_after(Seconds(1_u32)).unwrap();
     }

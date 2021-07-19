@@ -52,17 +52,24 @@ mod app {
     #[monotonic(binds = SysTick, default = true)]
     type MyMono = DwtSystick<MONO_HZ>;
 
-    #[resources]
-    struct Resources {
+    #[local]
+    struct Local {
         led: bsp::Led,
         u_rx: UartRx,
         q_tx: Producer,
         q_rx: Consumer,
+        blink_count: u32,
+    }
+
+    #[shared]
+    struct Shared {
         dma_interrupt_count: u32,
     }
 
-    #[init()]
-    fn init(mut cx: init::Context) -> (init::LateResources, init::Monotonics) {
+    #[init(local = [
+        queue: Queue = heapless::spsc::Queue(heapless::i::Queue::new())
+    ])]
+    fn init(mut cx: init::Context) -> (Shared, Local, init::Monotonics) {
         let mut dcb = cx.core.DCB;
         let dwt = cx.core.DWT;
         let systick = cx.core.SYST;
@@ -96,8 +103,7 @@ mod app {
         imxrt_uart_log::dma::init(u_tx, channel, Default::default()).unwrap();
 
         // The queue used for buffering bytes.
-        static mut Q: Queue = heapless::spsc::Queue(heapless::i::Queue::new());
-        let (q_tx, q_rx) = unsafe { Q.split() };
+        let (q_tx, q_rx) = cx.local.queue.split();
 
         // LED setup.
         let mut led = bsp::configure_led(pins.p13);
@@ -107,65 +113,62 @@ mod app {
         blink::spawn_after(Seconds(1_u32)).unwrap();
 
         (
-            init::LateResources {
+            Shared {
+                dma_interrupt_count: 0,
+            },
+            Local {
                 led,
                 u_rx,
                 q_tx,
                 q_rx,
-                dma_interrupt_count: 0,
+                blink_count: 0,
             },
             init::Monotonics(mono),
         )
     }
 
-    #[task(resources = [led, q_rx, dma_interrupt_count])]
+    #[task(local = [blink_count, led, q_rx], shared = [dma_interrupt_count])]
     fn blink(mut cx: blink::Context) {
-        static mut TIMES: u32 = 0;
-        *TIMES += 1;
-        let plural = if *TIMES > 1 { "s" } else { "" };
+        let plural = if *cx.local.blink_count > 1 { "s" } else { "" };
 
-        log::info!("`blink` called {} time{}", *TIMES, plural);
-        cx.resources.dma_interrupt_count.lock(|count| {
+        log::info!("`blink` called {} time{}", cx.local.blink_count, plural);
+        cx.shared.dma_interrupt_count.lock(|count| {
             log::info!("DMA7_DMA23 interrupted {} times", count);
         });
 
-        cx.resources.q_rx.lock(|q_rx| {
-            if q_rx.ready() {
-                let mut buffer = [0u8; 256];
-                for elem in buffer.iter_mut() {
-                    *elem = match q_rx.dequeue() {
-                        None => break,
-                        Some(b) => b,
-                    };
-                }
-                let s = core::str::from_utf8(&buffer).unwrap();
-                log::info!("read: {}", s);
+        if cx.local.q_rx.ready() {
+            let mut buffer = [0u8; 256];
+            for elem in buffer.iter_mut() {
+                *elem = match cx.local.q_rx.dequeue() {
+                    None => break,
+                    Some(b) => b,
+                };
             }
-        });
+            let s = core::str::from_utf8(&buffer).unwrap();
+            log::info!("read: {}", s);
+        }
 
         // Toggle the LED.
-        cx.resources.led.lock(|led| led.toggle());
+        cx.local.led.toggle();
 
         // Schedule the following blink.
         blink::spawn_after(Seconds(1_u32)).unwrap();
     }
 
-    #[task(binds = LPUART2, resources = [u_rx, q_tx])]
+    #[task(binds = LPUART2, local = [u_rx, q_tx])]
     fn lpuart2(cx: lpuart2::Context) {
         log::info!("LPUART2 interrupt task called!");
-        let u_rx = cx.resources.u_rx;
-        let q_tx = cx.resources.q_tx;
+        let u_rx = cx.local.u_rx;
+        let q_tx = cx.local.q_tx;
 
-        (u_rx, q_tx).lock(|u_rx, q_tx| {
-            while let Ok(b) = u_rx.read() {
-                q_tx.enqueue(b).ok();
-            }
-        });
+        while let Ok(b) = u_rx.read() {
+            q_tx.enqueue(b).ok();
+        }
     }
 
-    #[task(binds = DMA7_DMA23, resources = [dma_interrupt_count])]
+    #[task(binds = DMA7_DMA23, shared = [dma_interrupt_count])]
     fn dma7_dma23(mut cx: dma7_dma23::Context) {
-        cx.resources.dma_interrupt_count.lock(|count| *count += 1);
+        cx.shared.dma_interrupt_count.lock(|count| *count += 1);
         imxrt_uart_log::dma::poll();
     }
 }

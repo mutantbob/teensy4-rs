@@ -26,14 +26,18 @@ mod app {
     #[monotonic(binds = SysTick, default = true)]
     type MyMono = DwtSystick<{ bsp::hal::ccm::PLL1::ARM_HZ }>;
 
-    #[resources]
-    struct Resources {
+    #[local]
+    struct Local {
+        counter: u32,
         led: bsp::Led,
         poller: bsp::usb::Poller,
     }
 
+    #[shared]
+    struct Shared {}
+
     #[init()]
-    fn init(mut cx: init::Context) -> (init::LateResources, init::Monotonics) {
+    fn init(mut cx: init::Context) -> (Shared, Local, init::Monotonics) {
         let mut dcb = cx.core.DCB;
         let dwt = cx.core.DWT;
         let systick = cx.core.SYST;
@@ -55,21 +59,28 @@ mod app {
         // Initialize the USB system
         let (poller, _) = bsp::usb::init(USB1::take().unwrap(), Default::default()).unwrap();
 
-        (init::LateResources { led, poller }, init::Monotonics(mono))
+        (
+            Shared {},
+            Local {
+                counter: 0,
+                led,
+                poller,
+            },
+            init::Monotonics(mono),
+        )
     }
 
-    #[task(resources = [led])]
-    fn blink(mut cx: blink::Context) {
-        static mut COUNTER: u32 = 0;
-        cx.resources.led.lock(|led| led.toggle());
+    #[task(local = [led, counter])]
+    fn blink(cx: blink::Context) {
+        cx.local.led.toggle();
         // Schedule the following blink.
         blink::spawn_after(Seconds(1_u32)).unwrap();
-        log::info!("Hello from RTIC! Count = {}", *COUNTER);
-        *COUNTER += 1;
+        log::info!("Hello from RTIC! Count = {}", *cx.local.counter);
+        *cx.local.counter += 1;
     }
 
-    #[task(binds = USB_OTG1, resources = [poller])]
-    fn usb_otg1(mut cx: usb_otg1::Context) {
-        cx.resources.poller.lock(|poller| poller.poll());
+    #[task(binds = USB_OTG1, local = [poller])]
+    fn usb_otg1(cx: usb_otg1::Context) {
+        cx.local.poller.poll();
     }
 }

@@ -17,13 +17,16 @@ mod app {
     use bsp::hal::ral::usb::USB1;
     use teensy4_bsp as bsp;
 
-    #[resources]
-    struct Resources {
+    #[local]
+    struct Local {
         led: bsp::Led,
         reader: bsp::usb::Reader,
         writer: bsp::usb::Writer,
         poller: bsp::usb::Poller,
     }
+
+    #[shared]
+    struct Shared {}
 
     /// Initialize the system
     ///
@@ -31,7 +34,7 @@ mod app {
     /// - initialize the LED
     /// - initialize the USB reader and writer
     #[init]
-    fn init(mut cx: init::Context) -> (init::LateResources, init::Monotonics) {
+    fn init(mut cx: init::Context) -> (Shared, Local, init::Monotonics) {
         cx.device.ccm.pll1.set_arm_clock(
             bsp::hal::ccm::PLL1::ARM_HZ,
             &mut cx.device.ccm.handle,
@@ -45,11 +48,12 @@ mod app {
         let (poller, reader, writer) = bsp::usb::split(USB1::take().unwrap()).unwrap();
 
         (
-            init::LateResources {
+            Shared {},
+            Local {
                 led,
-                poller,
                 reader,
                 writer,
+                poller,
             },
             init::Monotonics(),
         )
@@ -57,21 +61,19 @@ mod app {
 
     /// This task drives the USB stack. If it detects that the host has
     /// received USB data, it schedules a task to echo back that data
-    #[task(binds = USB_OTG1, resources = [poller])]
-    fn usb_otg1(mut cx: usb_otg1::Context) {
-        let status = cx.resources.poller.lock(|poller| poller.poll());
+    #[task(binds = USB_OTG1, local = [poller])]
+    fn usb_otg1(cx: usb_otg1::Context) {
+        let status = cx.local.poller.poll();
         if status.cdc_rx_complete() {
             echo::spawn().unwrap();
         }
     }
 
     /// Echo data back to the host
-    #[task(resources = [led, reader, writer])]
+    #[task(local = [led, reader, writer])]
     fn echo(cx: echo::Context) {
-        (cx.resources.led, cx.resources.reader, cx.resources.writer).lock(|led, reader, writer| {
-            copy(reader, writer).unwrap();
-            led.toggle();
-        });
+        copy(cx.local.reader, cx.local.writer).unwrap();
+        cx.local.led.toggle();
     }
 }
 

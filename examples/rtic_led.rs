@@ -17,8 +17,14 @@ use teensy4_panic as _;
 mod app {
     use teensy4_bsp as bsp;
 
+    #[local]
+    struct Local {}
+
+    #[shared]
+    struct Shared {}
+
     #[init]
-    fn init(cx: init::Context) -> (init::LateResources, init::Monotonics) {
+    fn init(cx: init::Context) -> (Shared, Local, init::Monotonics) {
         // Cortex-M peripherals
         let _core: cortex_m::Peripherals = cx.core;
 
@@ -28,7 +34,7 @@ mod app {
         let mut led = bsp::configure_led(pins.p13);
         led.set();
 
-        (init::LateResources {}, init::Monotonics())
+        (Shared {}, Local {}, init::Monotonics())
     }
     #[idle]
     fn idle(_: idle::Context) -> ! {

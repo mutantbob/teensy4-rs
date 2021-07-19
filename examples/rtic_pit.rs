@@ -17,14 +17,17 @@ mod app {
     use super::{bsp, Timer};
     use embedded_hal::timer::CountDown;
 
-    #[resources]
-    struct Resources {
+    #[local]
+    struct Local {
         led: bsp::Led,
         timer: Timer,
     }
 
+    #[shared]
+    struct Shared {}
+
     #[init]
-    fn init(mut cx: init::Context) -> (init::LateResources, init::Monotonics) {
+    fn init(mut cx: init::Context) -> (Shared, Local, init::Monotonics) {
         let (_, ipg_hz) = cx.device.ccm.pll1.set_arm_clock(
             bsp::hal::ccm::PLL1::ARM_HZ,
             &mut cx.device.ccm.handle,
@@ -45,18 +48,16 @@ mod app {
         let mut led = bsp::configure_led(pins.p13);
         led.set();
 
-        (init::LateResources { led, timer }, init::Monotonics())
+        (Shared {}, Local { led, timer }, init::Monotonics())
     }
 
-    #[task(binds = PIT, resources = [led, timer])]
+    #[task(binds = PIT, local = [led, timer])]
     fn blink(cx: blink::Context) {
-        let timer = cx.resources.timer;
-        let led = cx.resources.led;
+        let timer = cx.local.timer;
+        let led = cx.local.led;
 
-        (timer, led).lock(|timer, led| {
-            if let Ok(()) = timer.wait() {
-                led.toggle();
-            }
-        })
+        if let Ok(()) = timer.wait() {
+            led.toggle();
+        }
     }
 }
