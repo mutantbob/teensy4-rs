@@ -24,6 +24,8 @@ These changes affect symbols in the BSP:
 - `LED => Led`
 - `usb::Error::IO => usb::Error::Io`
 
+**BREAKING** Update cortex-m-rt to 0.7.
+
 ## [0.2.0] - 2021-01-09
 
 This release lets users combine the USB logging system with RTIC. The new
