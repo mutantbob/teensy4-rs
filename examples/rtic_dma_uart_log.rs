@@ -43,8 +43,7 @@ mod app {
     use embedded_hal::serial::Read;
     use teensy4_bsp as bsp;
 
-    use dwt_systick_monotonic::DwtSystick;
-    use rtic::time::duration::Seconds;
+    use dwt_systick_monotonic::{fugit::ExtU32, DwtSystick};
 
     const BAUD: u32 = 115_200;
     const TX_FIFO_SIZE: u8 = 4;
@@ -110,7 +109,7 @@ mod app {
         led.set_high().unwrap();
 
         // Schedule the first blink.
-        blink::spawn_after(Seconds(1_u32)).unwrap();
+        blink::spawn_after(1_u32.secs()).unwrap();
 
         (
             Shared {
@@ -152,7 +151,7 @@ mod app {
         cx.local.led.toggle();
 
         // Schedule the following blink.
-        blink::spawn_after(Seconds(1_u32)).unwrap();
+        blink::spawn_after(1_u32.secs()).unwrap();
     }
 
     #[task(binds = LPUART2, local = [u_rx, q_tx])]

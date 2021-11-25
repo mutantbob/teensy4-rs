@@ -20,8 +20,7 @@ mod app {
     use embedded_hal::digital::v2::OutputPin;
     use teensy4_bsp as bsp;
 
-    use dwt_systick_monotonic::DwtSystick;
-    use rtic::time::duration::Seconds;
+    use dwt_systick_monotonic::{fugit::ExtU32, DwtSystick};
 
     #[monotonic(binds = SysTick, default = true)]
     type MyMono = DwtSystick<{ bsp::hal::ccm::PLL1::ARM_HZ }>;
@@ -51,7 +50,7 @@ mod app {
         );
 
         // Schedule the first blink.
-        blink::spawn_after(Seconds(1_u32)).unwrap();
+        blink::spawn_after(1_u32.secs()).unwrap();
         let pins = bsp::t40::into_pins(cx.device.iomuxc);
         let mut led = bsp::configure_led(pins.p13);
         led.set_high().unwrap();
@@ -74,7 +73,7 @@ mod app {
     fn blink(cx: blink::Context) {
         cx.local.led.toggle();
         // Schedule the following blink.
-        blink::spawn_after(Seconds(1_u32)).unwrap();
+        blink::spawn_after(1_u32.secs()).unwrap();
         log::info!("Hello from RTIC! Count = {}", *cx.local.counter);
         *cx.local.counter += 1;
     }
